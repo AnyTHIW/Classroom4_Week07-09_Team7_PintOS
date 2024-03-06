@@ -6,3 +6,6 @@
 # environment configurations
 .envrc
 
+# build files
+threads/build
+
