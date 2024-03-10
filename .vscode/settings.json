@@ -4,10 +4,6 @@
         "flags.h": "c",
         "thread.h": "c"
     },
-    "[c]": {
-        "editor.defaultFormatter": "ms-vscode.cpptools",
-        "editor.formatOnSave": true
-    },
     "C_Cpp_Runner.msvcBatchPath": "",
     "C_Cpp_Runner.cCompilerPath": "clang",
     "C_Cpp_Runner.cppCompilerPath": "clang++",
