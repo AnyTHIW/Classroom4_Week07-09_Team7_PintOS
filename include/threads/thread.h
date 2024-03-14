@@ -108,8 +108,9 @@ struct thread
     struct list donations; // 기부해준 스레드
 
     /* Shared between thread.c and synch.c. */
-    struct list_elem elem; /* List element. */
-    struct list_elem d_elem;
+    struct list_elem elem;   /* List element. */
+    struct list_elem d_elem; /* Donor List element */
+    // 나에게 우선순위부여를 해준 donor의 list
     struct list_elem th_elem; // thread_list
 
 #ifdef USERPROG

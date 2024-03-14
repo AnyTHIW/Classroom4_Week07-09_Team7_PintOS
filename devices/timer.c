@@ -126,7 +126,8 @@ void timer_sleep(int64_t ticks)
 {
     int64_t start = timer_ticks();
 
-    if (timer_elapsed(start) < ticks)
+    if (timer_elapsed(start) < ticks) // 요청한 시간 + 재우고 싶은 시간 = start + ticks가
+    // 재워야 할 시'각'을 넘어가면, 재우는 게 의미가 없다.
     {
         ASSERT(intr_get_level() == INTR_ON); // 인터럽트가 켜져 있어야 합니다.
         thread_sleep(start + ticks);         // 현재까지의 OS 시간 + 재우고 싶은 시간

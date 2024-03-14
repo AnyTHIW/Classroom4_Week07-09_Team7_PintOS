@@ -79,6 +79,7 @@ void sema_down(struct semaphore *sema)
     while (sema->value == 0)
     {
         list_push_back(&sema->waiters, &thread_current()->elem);
+        // sema의 waiters에 현재 돌아가는 thread의 elem을 넣음으로써 정보저장
         // list_insert_ordered(&sema->waiters, &thread_current()->elem, priority, NULL);
         thread_block(); // 실행 정지
     }
@@ -253,6 +254,7 @@ void donate_priority(struct list_elem *donor, struct thread *holder)
 {
     // struct thread *donor = list_entry(list_front(&waiters->waiters), struct thread, elem);
     list_insert_ordered(&holder->donations, donor, d_elem_priority, NULL);
+    // 자원홀더의 기부자리스트 중 적당한 위치에 줄서는 함수
     int dona_prio = list_entry(list_front(&holder->donations), struct thread, d_elem)->priority;
     if (holder->priority < dona_prio)
     {
