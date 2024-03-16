@@ -163,76 +163,127 @@ error:
     thread_exit();
 }
 
-//
-int skim_commands(char *ptr, char *arr[])
-{
-    char *next = NULL;
-    char *curr = strtok_r(ptr, " ", &next);
-
-    int cnt = 0;
-    while (curr != NULL)
-    {
-        curr = strtok_r(ptr, " ", &next);
-        arr[cnt] = curr; //  문자열의 시작주소를 저장
-        curr = next;
-        cnt++;
-    }
-
-    return cnt;
-}
-
-void save_commands()
-{
-}
-
-// 포인터 배열 초기화에 필요한 함수
-void init_ptr_arr(char *p_arr[])
-{
-    for (int i = 0; i < sizeof(*p_arr) / sizeof(char *); i++)
-    {
-        p_arr[i] = NULL;
-    }
-}
-
-int get_string_size(char *string_ptr)
-{
-    size_t addr_number = 1; //  문자열 끝의 '\0'은 세지 않는다.
-
-    for (; *string_ptr; *string_ptr++, addr_number++)
-        ; // string_ptr이 NULL일 때 까지 값을 증가시키면서
-    // string_ptr -= addr_number;  //  string_ptr의 포인터를 쓰고 싶으면 주석제거
-    // 근데 string_ptr는 필요없고 증가된 addr_number만 필요함.
-    return addr_number;
-}
-
-int get_commands_size(void *cmmd_ptr)
-{
-}
-
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
-int process_exec(void *file_name)
+int process_exec(void *f_name)
 {
+    char *file_name = f_name;
     bool success;
 
-    // /* We cannot use the intr_frame in the thread structure.
-    //  * This is because when current thread rescheduled,
-    //  * it stores the execution information to the member. */
+    /* We cannot use the intr_frame in the thread structure.
+     * This is because when current thread rescheduled,
+     * it stores the execution information to the member. */
     struct intr_frame _if;
     _if.ds = _if.es = _if.ss = SEL_UDSEG;
     _if.cs = SEL_UCSEG;
     _if.eflags = FLAG_IF | FLAG_MBS;
 
-    // /* We first kill the current context */
+    /* We first kill the current context */
     process_cleanup();
 
-    // /* And then load the binary */
-    success = load(file_name, &_if);
+    char *curr;
+    char *next = NULL;
 
-    // /* If load failed, quit. */
-    palloc_free_page(file_name);
+    /* 명령인자용 배열선언 및 초기화 */
+    char *temp_data[128]; //  명령인자 임시 저장소 (포인터배열)
+    for (int i = 0; i < 128; i++)
+    {
+        temp_data[i] = NULL;
+    }
+    /* 명령인자주소용 배열선언 및 초기화 */
+    char *addr_string[64];
+    for (int i = 0; i < 64; i++)
+    {
+        addr_string[i] = NULL;
+    }
+
+    /* 파일 이름부터 추출 */
+    char *name = strtok_r(file_name, " ", &next);
+    temp_data[0] = name; //  이게 맞는것인가 (문자열 시작포인터를 포인터배열에 저장하는것이)
+    /* 인자들만 단어별로 잘라서 temp_data에 저장, 인자들의 갯수는 args_count */
+
+    int args_count = 1;
+    while (curr != NULL)
+    {
+        // NULL 전달하여 다음 토큰을 가져옴
+        curr = strtok_r(NULL, " ", &next);
+        temp_data[args_count] = curr; //  문자열의 시작주소를 저장
+        printf("%d\n", curr);
+        args_count++;
+
+        if (args_count >= 128)
+            break;
+    }
+
+    /* And then load the binary */
+    success = load(name, &_if);
+    // printf("load 완료. 파일 이름: %s \n", name);
+    // printf("USER_STACK: %p, %d \n", _if.rsp, _if.rsp);
+
+    /* 파일이름 포함 모든 명령어 스택에 저장 */
+    int idx = args_count - 2; //  마지막에 뭐가 들어가네?? -1 + -1
+    printf("args_count : %d, idx : %d\n", args_count, idx);
+    while (idx >= 0)
+    {
+        int stringLength = strlen(temp_data[idx]) + 1;
+        _if.rsp -= stringLength;
+        for (int i = 0; i < stringLength; i++)
+            *((char *)(_if.rsp) + i) = temp_data[idx][i];
+        idx--;
+    }
+
+    /* 패딩 계산 */
+    int remainder = (USER_STACK - _if.rsp) % 8;
+    // ASSERT(USER_STACK - _if.rsp != 0);
+    printf("test : %d\n", remainder);
+    int padding = 0;
+    if (remainder)
+        padding = 8 - remainder;
+
+    /* 패딩만큼 0 저장 */
+    int padding_counter = padding;
+    while (padding_counter > 0)
+    {
+        (_if.rsp)--;                        //  남은 주솟값 패딩만큼 줄여서
+        *((uint8_t *)_if.rsp) = (uint8_t)0; //  0 저장  ? uint8_t[] 라고 되어있는데??
+        padding_counter--;                  //  패딩카운터 줄이기
+    }
+
+    /* 마지막 주솟값 표시의 0 추가 */
+    for (int i = 0; i < (int)sizeof(char *); i++)
+    {
+        (_if.rsp)--;
+        *((char *)(_if.rsp)) = (char *)0;
+    }
+
+    // (_if.rsp) -= sizeof(void *);
+    // *((char *)(_if.rsp)) = 0;
+
+    /* 명령어인자의 주솟값 스택에 저장 */
+    _if.rsp -= sizeof(char *) * idx; //  char사이즈 * 인자 만큼 물러나기
+
+    int count = 0;
+    while (count < idx)
+    {
+        for (int i = 0; i < 64; i++)
+            addr_string[count][i] = *((char *)(_if.rsp) + count) = temp_data[count];
+    }
+
+    /* 찐 최종본 마지막 리턴값 0 추가 */
+    for (int i = 0; i < (int)sizeof(char *); i++)
+    {
+        (_if.rsp)--;
+        *((char *)(_if.rsp)) = (void *)0;
+    }
+
+    hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+    // temp_data[word_count - 1];  //
+
+    /* If load failed, quit. */
+    palloc_free_page(name);
     if (!success)
         return -1;
+    // hex_dump(_if.rsp, _if.rsp, KERN_BASE - _if.rsp, true);   //  ???
 
     /* Start switched process. */
     do_iret(&_if);
@@ -253,6 +304,9 @@ int process_wait(tid_t child_tid UNUSED)
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
+    while (1)
+    {
+    }
     return -1;
 }
 
@@ -374,20 +428,15 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
 static bool
-load(const char *file_data, struct intr_frame *if_)
+load(const char *file_name, struct intr_frame *if_)
 {
+    printf("Test 로딩중... COMMAND: \'%s\'\n", file_name);
     struct thread *t = thread_current();
     struct ELF ehdr;
     struct file *file = NULL;
     off_t file_ofs;
     bool success = false;
     int i;
-    printf("=======test start=======\n");
-    printf("%d - %s\n", file_data, file_data);
-    printf("========test end========\n");
-    char *next = NULL;
-
-    char *file_name = strtok_r(file_data, " ", &next);
 
     /* Allocate and activate page directory. */
     t->pml4 = pml4_create();
@@ -473,51 +522,13 @@ load(const char *file_data, struct intr_frame *if_)
     if (!setup_stack(if_))
         goto done;
 
+    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
     /* Start address. */
     if_->rip = ehdr.e_entry;
 
     /* TODO: Your code goes here.
      * TODO: Implement argument passing (see project2/argument_passing.html). */
-    char *cmmd_data[10]; //  임시
-    char **cmmd_data_ptr = NULL;
-
-    init_ptr_arr(&cmmd_data);
-    msg("=============test==============\n");
-    msg("%p, %d\n", &cmmd_data, cmmd_data[0]);
-    int word_count = skim_commands(file_name, &cmmd_data); //  last_index가 10보다 크면 안됨. test용.
-
-    // char *file_name = cmmd_ptr;
-
-    int char_count = 0;
-
-    void *user_stack = USER_STACK;
-
-    int i = word_count; //  word_counter를 나중에 쓴다.
-    do
-    {
-        char_count = strlen(cmmd_data[i]);
-        i--;
-        user_stack -= sizeof(char) * char_count;
-    } while (i >= 1);
-
-    /* 패딩 계산 */
-    int remainder = (get_string_size(file_data) % 8);
-    int padding = 0;
-    if (!(remainder))
-    {
-        padding = 8 - remainder;
-    }
-    int padding_counter = padding;
-
-    /* 패딩만큼 0 저장 */
-    while (padding_counter > 0)
-    {
-        user_stack -= sizeof(void *); //  남은 주솟값 패딩만큼 줄여서
-        user_stack = 0;               //  0 저장
-        padding_counter--;            //  패딩카운터 줄이기
-    }
-
-    word_count;
 
     success = true;
 

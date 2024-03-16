@@ -547,6 +547,15 @@ void thread_yield(void)
     intr_set_level(old_level);
 }
 
+/* 시현 추가 함수 */
+void thread_try_yield(void)
+{
+    if (!intr_context() && !list_empty(&ready_list) && thread_current() != idle_thread)
+    {
+        thread_yield();
+    }
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY.
    현재 스레드의 우선순위를 NEW_PRIORITY로 설정합니다. */
 void thread_set_priority(int new_priority)
