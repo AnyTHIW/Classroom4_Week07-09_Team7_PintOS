@@ -181,109 +181,13 @@ int process_exec(void *f_name)
     /* We first kill the current context */
     process_cleanup();
 
-    char *curr;
-    char *next = NULL;
-
-    /* 명령인자용 배열선언 및 초기화 */
-    char *temp_data[128]; //  명령인자 임시 저장소 (포인터배열)
-    for (int i = 0; i < 128; i++)
-    {
-        temp_data[i] = NULL;
-    }
-    /* 명령인자주소용 배열선언 및 초기화 */
-    char *addr_string[64];
-    for (int i = 0; i < 64; i++)
-    {
-        addr_string[i] = NULL;
-    }
-
-    /* 파일 이름부터 추출 */
-    char *name = strtok_r(file_name, " ", &next);
-    temp_data[0] = name; //  이게 맞는것인가 (문자열 시작포인터를 포인터배열에 저장하는것이)
-    /* 인자들만 단어별로 잘라서 temp_data에 저장, 인자들의 갯수는 args_count */
-
-    int args_count = 1;
-    while (curr != NULL)
-    {
-        // NULL 전달하여 다음 토큰을 가져옴
-        curr = strtok_r(NULL, " ", &next);
-        temp_data[args_count] = curr; //  문자열의 시작주소를 저장
-        printf("%d\n", curr);
-        args_count++;
-
-        if (args_count >= 128)
-            break;
-    }
-
     /* And then load the binary */
-    success = load(name, &_if);
-    // printf("load 완료. 파일 이름: %s \n", name);
-    // printf("USER_STACK: %p, %d \n", _if.rsp, _if.rsp);
-
-    /* 파일이름 포함 모든 명령어 스택에 저장 */
-    int idx = args_count - 2; //  마지막에 뭐가 들어가네?? -1 + -1
-    printf("args_count : %d, idx : %d\n", args_count, idx);
-    while (idx >= 0)
-    {
-        int stringLength = strlen(temp_data[idx]) + 1;
-        _if.rsp -= stringLength;
-        for (int i = 0; i < stringLength; i++)
-            *((char *)(_if.rsp) + i) = temp_data[idx][i];
-        idx--;
-    }
-
-    /* 패딩 계산 */
-    int remainder = (USER_STACK - _if.rsp) % 8;
-    // ASSERT(USER_STACK - _if.rsp != 0);
-    printf("test : %d\n", remainder);
-    int padding = 0;
-    if (remainder)
-        padding = 8 - remainder;
-
-    /* 패딩만큼 0 저장 */
-    int padding_counter = padding;
-    while (padding_counter > 0)
-    {
-        (_if.rsp)--;                        //  남은 주솟값 패딩만큼 줄여서
-        *((uint8_t *)_if.rsp) = (uint8_t)0; //  0 저장  ? uint8_t[] 라고 되어있는데??
-        padding_counter--;                  //  패딩카운터 줄이기
-    }
-
-    /* 마지막 주솟값 표시의 0 추가 */
-    for (int i = 0; i < (int)sizeof(char *); i++)
-    {
-        (_if.rsp)--;
-        *((char *)(_if.rsp)) = (char *)0;
-    }
-
-    // (_if.rsp) -= sizeof(void *);
-    // *((char *)(_if.rsp)) = 0;
-
-    /* 명령어인자의 주솟값 스택에 저장 */
-    _if.rsp -= sizeof(char *) * idx; //  char사이즈 * 인자 만큼 물러나기
-
-    int count = 0;
-    while (count < idx)
-    {
-        for (int i = 0; i < 64; i++)
-            addr_string[count][i] = *((char *)(_if.rsp) + count) = temp_data[count];
-    }
-
-    /* 찐 최종본 마지막 리턴값 0 추가 */
-    for (int i = 0; i < (int)sizeof(char *); i++)
-    {
-        (_if.rsp)--;
-        *((char *)(_if.rsp)) = (void *)0;
-    }
-
-    hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
-    // temp_data[word_count - 1];  //
+    success = load(file_name, &_if);
 
     /* If load failed, quit. */
-    palloc_free_page(name);
+    palloc_free_page(file_name);
     if (!success)
         return -1;
-    // hex_dump(_if.rsp, _if.rsp, KERN_BASE - _if.rsp, true);   //  ???
 
     /* Start switched process. */
     do_iret(&_if);
@@ -304,9 +208,14 @@ int process_wait(tid_t child_tid UNUSED)
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
-    while (1)
+    // while (1)
+    // {
+    // }
+
+    for (int i = 0; i < 100000000; i++)
     {
     }
+
     return -1;
 }
 
@@ -428,9 +337,8 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
 static bool
-load(const char *file_name, struct intr_frame *if_)
+load(const char *file_commands, struct intr_frame *if_)
 {
-    printf("Test 로딩중... COMMAND: \'%s\'\n", file_name);
     struct thread *t = thread_current();
     struct ELF ehdr;
     struct file *file = NULL;
@@ -438,17 +346,31 @@ load(const char *file_name, struct intr_frame *if_)
     bool success = false;
     int i;
 
+    //// /* Declare datastructure for commands */
+    char *cmmds_ptr_arr[128]; //  문자열 시작주소만 담는 '포인터배열'
+    char *cmmds_addr_arr[64]; //  주소를 담는 '포인터배열'
+    char(*addr_arr)[128];     // 문자열을 담는 '배열포인터'
+    void **d_ptr = NULL;
+
     /* Allocate and activate page directory. */
     t->pml4 = pml4_create();
     if (t->pml4 == NULL)
         goto done;
     process_activate(thread_current());
 
+    //// /* extract_fname */
+    char *fname = NULL;
+    char *curr = NULL;
+    char *next = NULL;
+
+    fname = curr = strtok_r(file_commands, " ", &next);
+    cmmds_ptr_arr[0] = fname;
+
     /* Open executable file. */
-    file = filesys_open(file_name);
+    file = filesys_open(fname);
     if (file == NULL)
     {
-        printf("load: %s: open failed\n", file_name);
+        printf("load: %s: open failed\n", fname);
         goto done;
     }
 
@@ -456,7 +378,7 @@ load(const char *file_name, struct intr_frame *if_)
     if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
         || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024)
     {
-        printf("load: %s: error loading executable\n", file_name);
+        printf("load: %s: error loading executable\n", fname);
         goto done;
     }
 
@@ -522,7 +444,7 @@ load(const char *file_name, struct intr_frame *if_)
     if (!setup_stack(if_))
         goto done;
 
-    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+    printf("USER_STACK : %x, %d\n", if_->rsp, if_->rsp);
 
     /* Start address. */
     if_->rip = ehdr.e_entry;
@@ -530,12 +452,82 @@ load(const char *file_name, struct intr_frame *if_)
     /* TODO: Your code goes here.
      * TODO: Implement argument passing (see project2/argument_passing.html). */
 
+    /* extract argv */
+    int j = 1; //  파일이름 때문에 +1 됨
+    while (curr != NULL)
+    {
+        curr = strtok_r(NULL, " ", &next);
+
+        // if (curr == NULL && next == NULL)
+        if (curr == NULL)
+            break;
+
+        cmmds_ptr_arr[j] = curr;
+        j++;
+
+        if (j >= 128)
+            break;
+    }
+    j--; //  마지막에 공백 명령어 1개가 들어감.
+    int saved_data_idx = j;
+
+    /* push all commands */
+    while (j >= 0)
+    {
+        if_->rsp -= strlen((cmmds_ptr_arr[j])) + 1;
+        // **(char **)if_->rsp = *((*cmmds_ptr_arr) + j);
+        memcpy((char *)if_->rsp, cmmds_ptr_arr[j], strlen((cmmds_ptr_arr[j])) + 1);
+        cmmds_addr_arr[j] = if_->rsp;
+        printf("test : %x, %d\n", cmmds_addr_arr[j], cmmds_addr_arr[j]);
+        printf("curr_USER_STACK : %x, %d\n", if_->rsp, if_->rsp);
+        // if_->rsp
+        j--;
+    }
+
+    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
+    add_padding(if_->rsp);
+
+    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
+    /* save zero address */
+    if_->rsp -= sizeof(char *);
+    memset(if_->rsp, 0, sizeof(char *));
+    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
+    /* add_all_cmd_addr */
+    int k = saved_data_idx;
+    while (k > 0)
+    {
+        if_->rsp -= strlen(cmmds_addr_arr[k]) + 1;
+        memcpy((if_->rsp), &(cmmds_addr_arr[k]), strlen(cmmds_addr_arr[k]) + 1);
+        // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+        k--;
+    }
+
+    /* save_return_addr */
+    if_->rsp -= sizeof(char *);
+    memset(if_->rsp, 0, sizeof(char *));
+
+    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
     success = true;
 
 done:
     /* We arrive here whether the load is successful or not. */
     file_close(file);
     return success;
+}
+
+void add_padding(uintptr_t underlimit)
+{
+    int remainder = underlimit % 8;
+
+    if (remainder == 0)
+        return;
+
+    underlimit -= 8 - remainder;
+    memset(underlimit, 0, 8 - remainder);
 }
 
 /* Checks whether PHDR describes a valid, loadable segment in
