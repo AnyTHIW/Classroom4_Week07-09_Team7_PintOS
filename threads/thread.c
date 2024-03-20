@@ -1,4 +1,3 @@
-#include "include/lib/kernel/list.h"
 #include "threads/thread.h"
 #include <stdbool.h>
 #include <debug.h>
@@ -85,6 +84,20 @@ static unsigned thread_ticks; /* 마지막 양보 부터의 타이머틱스 ### 
    커널의 커맨드라인 옵션인 "-o mlfqs"에 의해 조정된다*/
 bool thread_mlfqs;
 
+// int f = 1 << 14; // p 17 q 14
+static int load_avg;
+static struct list thread_list;
+// static int ready_threads;
+
+#define FIXED (14)
+#define ADD(x, y) ((x) + ((y) << FIXED)) // y = integer
+#define SUB(x, y) ((x) - ((y) << FIXED))
+#define MUL(x, y) ((((int64_t)(x)) * y) >> FIXED)
+#define DIV(x, y) ((((int64_t)(x)) << FIXED) / y)
+#define TOINT(x) (x >= 0) ? ((x + ((1 << FIXED) >> 1)) >> FIXED) : ((x - ((1 << FIXED) >> 1)) >> FIXED)
+#define TOINT_ZERO(x) ((x) >> FIXED)
+#define TOFIX(x) (x << FIXED)
+
 static void kernel_thread(thread_func *, void *aux);
 
 static void idle(void *aux UNUSED);
@@ -96,7 +109,6 @@ static void schedule(void);
 
 static tid_t allocate_tid(void);
 static bool less(const struct list_elem *a, const struct list_elem *b, void *aux);
-// static bool larger(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Returns true if T appears to point to a valid thread.
    만약 T가 유효한 쓰레드이면 true 반환*/
@@ -157,7 +169,7 @@ bool less(const struct list_elem *a, const struct list_elem *b, void *aux)
     return ta->wakeup_tick < tb->wakeup_tick;
 }
 
-bool larger(const struct list_elem *a, const struct list_elem *b, void *aux)
+bool priority(const struct list_elem *a, const struct list_elem *b, void *aux)
 {
     struct thread *ta = list_entry(a, struct thread, elem);
     struct thread *tb = list_entry(b, struct thread, elem);
@@ -380,6 +392,17 @@ void thread_unblock(struct thread *t)
     intr_set_level(old_level);
 }
 
+void thread_preempt(void)
+{
+    int curr_prio = thread_current()->priority;
+    if (list_empty(&ready_list))
+        return;
+
+    if (list_entry(list_front(&ready_list), struct thread, elem)->priority > curr_prio)
+    {
+        thread_yield();
+    }
+}
 /* Returns the name of the running thread.
    실행 중인 스레드의 이름을 반환합니다. */
 const char *thread_name(void)
@@ -523,7 +546,7 @@ int thread_get_priority(void)
 
 /* Sets the current thread's nice value to NICE.
    현재 스레드의 nice 값을 NICE로 설정합니다. */
-void thread_set_nice(int nice UNUSED)
+void thread_set_nice(int nice) // UNUSED
 {
     /* TODO: Your implementation goes here */
 }
