@@ -21,12 +21,12 @@
                 "--fs-disk=10",
                 "--swap-disk=4",
                 "-p",
-                "tests/userprog/halt:halt",
+                "tests/userprog/args-none:args-none",
                 "--",
                 "-q",
                 "-f",
                 "run",
-                "halt ${input:args}"
+                "args-none ${input:args}"
             ],
             "options": {
                 "cwd": "${workspaceFolder}/${input:project}/build"

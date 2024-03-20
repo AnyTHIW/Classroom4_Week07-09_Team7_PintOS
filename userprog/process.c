@@ -212,7 +212,7 @@ int process_wait(tid_t child_tid UNUSED)
     // {
     // }
 
-    for (int i = 0; i < 100000000; i++)
+    for (int i = 0; i < 1000000000; i++)
     {
     }
 
@@ -227,8 +227,9 @@ void process_exit(void)
      * TODO: Implement process termination message (see
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
-
     process_cleanup();
+
+    return 0;
 }
 
 /* Free the current process's resources. */
@@ -349,8 +350,6 @@ load(const char *file_commands, struct intr_frame *if_)
     //// /* Declare datastructure for commands */
     char *cmmds_ptr_arr[128]; //  문자열 시작주소만 담는 '포인터배열'
     char *cmmds_addr_arr[64]; //  주소를 담는 '포인터배열'
-    char(*addr_arr)[128];     // 문자열을 담는 '배열포인터'
-    void **d_ptr = NULL;
 
     /* Allocate and activate page directory. */
     t->pml4 = pml4_create();
@@ -363,10 +362,17 @@ load(const char *file_commands, struct intr_frame *if_)
     char *curr = NULL;
     char *next = NULL;
 
-    fname = curr = strtok_r(file_commands, " ", &next);
-    cmmds_ptr_arr[0] = fname;
+    printf("헥스덤프가 이상해");
 
+    hex_dump(if_->rip, if_->rip, USER_STACK - if_->rip, false);
+
+    fname = curr = strtok_r(file_commands, " ", &next);
+    hex_dump(if_->rip, if_->rip, USER_STACK - if_->rip, true);
+    cmmds_ptr_arr[0] = fname;
+    // printf("fname:%s\n", fname);
     /* Open executable file. */
+    hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
     file = filesys_open(fname);
     if (file == NULL)
     {
@@ -444,7 +450,7 @@ load(const char *file_commands, struct intr_frame *if_)
     if (!setup_stack(if_))
         goto done;
 
-    printf("USER_STACK : %x, %d\n", if_->rsp, if_->rsp);
+    // printf("USER_STACK : %x, %d\n", if_->rsp, if_->rsp);
 
     /* Start address. */
     if_->rip = ehdr.e_entry;
@@ -474,12 +480,12 @@ load(const char *file_commands, struct intr_frame *if_)
     /* push all commands */
     while (j >= 0)
     {
-        if_->rsp -= strlen((cmmds_ptr_arr[j])) + 1;
+        if_->rsp -= strlen(cmmds_ptr_arr[j]) + 1;
         // **(char **)if_->rsp = *((*cmmds_ptr_arr) + j);
-        memcpy((char *)if_->rsp, cmmds_ptr_arr[j], strlen((cmmds_ptr_arr[j])) + 1);
+        memcpy((char *)if_->rsp, cmmds_ptr_arr[j], strlen(cmmds_ptr_arr[j]) + 1);
         cmmds_addr_arr[j] = if_->rsp;
-        printf("test : %x, %d\n", cmmds_addr_arr[j], cmmds_addr_arr[j]);
-        printf("curr_USER_STACK : %x, %d\n", if_->rsp, if_->rsp);
+        // printf("test : %x, %d\n", cmmds_addr_arr[j], cmmds_addr_arr[j]);
+        // printf("curr_USER_STACK : %x, %d\n", if_->rsp, if_->rsp);
         // if_->rsp
         j--;
     }
@@ -510,7 +516,7 @@ load(const char *file_commands, struct intr_frame *if_)
     memset(if_->rsp, 0, sizeof(char *));
 
     // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
-
+    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
     success = true;
 
 done:
