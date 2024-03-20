@@ -6,3 +6,5 @@
 # environment configurations
 .envrc
 
+userprog/build
+

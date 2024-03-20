@@ -550,12 +550,14 @@ load(const char *file_name, struct intr_frame *if_)
 
     /* TODO: Your code goes here.
      * TODO: Implement argument passing (see project2/argument_passing.html). ???;;;;*/
-    printf("rsp %llx\n", if_->rsp);
+    // printf("rsp %llx\n", if_->rsp);
     stack_push(if_, argv, count);
-    printf("close error?\n");
-    /
-        // printf("push ok rsp %llx\n", if_->rsp);
-        success = true;
+    // printf("close error?\n");
+    // printf("push ok rsp %llx\n", if_->rsp);
+
+    hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
+
+    success = true;
 
 done:
     /* We arrive here whether the load is successful or not. */
@@ -600,8 +602,6 @@ void stack_push(struct intr_frame *if_, char **argv, int argc)
     if_->rsp = if_->rsp - 8;
     memset(if_->rsp, 0, sizeof(void *));
     // printf("rrrsp %llx\n", if_->rsp);
-
-    // hex_dump(if_->rsp, if_->rsp, USER_STACK - if_->rsp, true);
 }
 
 /* Checks whether PHDR describes a valid, loadable segment in
